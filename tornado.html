@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>St. Louis Tornado — Building Damage Entry</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 :root {
   --bg: #f0efeb;
@@ -253,12 +255,12 @@ select {
 
 /* ── Map Panel ──────────────────────────── */
 #mappanel {
-  width: 360px; min-width: 360px; background: var(--surface);
+  width: 380px; min-width: 380px; background: var(--surface);
   border-left: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
 }
 .map-hdr {
-  padding: 12px 14px; font-size: 12px; font-weight: 600;
+  padding: 10px 14px; font-size: 12px; font-weight: 600;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted); letter-spacing: .02em;
   text-transform: uppercase;
@@ -266,26 +268,33 @@ select {
 #mapframe {
   flex: 1; min-height: 300px;
   background: var(--surface-alt);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-muted); font-size: 12px;
+  position: relative;
 }
-#mapframe iframe { width: 100%; height: 100%; border: 0; }
+.map-hint {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  background: var(--text); color: var(--bg); font-size: 11.5px;
+  padding: 5px 12px; border-radius: 4px; z-index: 1000;
+  pointer-events: none; opacity: .9; white-space: nowrap;
+}
 .map-links {
-  padding: 10px 14px; border-top: 1px solid var(--border);
-  display: flex; gap: 10px; flex-wrap: wrap;
+  padding: 8px 14px; border-top: 1px solid var(--border);
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
 }
-.map-links a {
-  font-size: 12px; font-weight: 500; color: var(--accent);
-  text-decoration: none;
+.map-links a, .map-links button {
+  font: inherit; font-size: 12px; font-weight: 500; color: var(--accent);
+  text-decoration: none; background: none; border: none; cursor: pointer; padding: 0;
 }
-.map-links a:hover { text-decoration: underline; }
+.map-links a:hover, .map-links button:hover { text-decoration: underline; }
+.map-links .sep { color: var(--border); }
 .map-coords {
-  padding: 6px 14px; font-size: 11.5px; color: var(--text-muted);
+  padding: 5px 14px; font-size: 11.5px; color: var(--text-muted);
   font-variant-numeric: tabular-nums; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
 }
+.map-coords .coord-val { font-weight: 500; color: var(--text); }
 .map-empty {
   flex: 1; display: flex; align-items: center; justify-content: center;
-  padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;
+  padding: 20px; text-align: center; color: var(--text-muted); font-size: 12.5px;
   line-height: 1.6;
 }
 
@@ -420,9 +429,9 @@ select {
       <div id="content">
         <div id="fscroll"></div>
         <div id="mappanel">
-          <div class="map-hdr"><span>Building View</span><button onclick="toggleMap()" style="display:none;font:inherit;background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:0" id="map-close">&times;</button></div>
-          <div id="mapframe"><span>Enter coordinates to load map</span></div>
-          <div id="maplinks" class="map-links" hidden></div>
+          <div class="map-hdr"><span>Click map to select building</span><button onclick="toggleMap()" style="display:none;font:inherit;background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:0" id="map-close">&times;</button></div>
+          <div id="mapframe"></div>
+          <div id="maplinks" class="map-links"></div>
           <div id="mapcoords" class="map-coords" hidden></div>
         </div>
       </div>
@@ -436,14 +445,7 @@ select {
 const S = {
   defaults: { tornado_name:"St. Louis", tornado_year:"2024", tornado_EF:"EF3" },
   sections: [
-    {id:"event",t:"Event Info",d:"Tornado metadata — pre-filled for St. Louis 2024.",f:[
-      {k:"tornado_name",l:"Tornado Name",t:"text"},{k:"tornado_year",l:"Year",t:"number"},
-      {k:"town",l:"Town",t:"text",h:"Town where the building is located"},
-      {k:"tornado_EF",l:"EF Rating",t:"text"},
-      {k:"tornado_start_lat",l:"Start Lat",t:"number"},{k:"tornado_end_lat",l:"End Lat",t:"number"},
-      {k:"tornado_start_long",l:"Start Long",t:"number"},{k:"tornado_end_long",l:"End Long",t:"number"},
-    ]},
-    {id:"location",t:"Building Location",d:"Coordinates are the most accurate locator.",f:[
+    {id:"location",t:"Building Location",d:"Click on the map to set coordinates, or type them in.",f:[
       {k:"latitude",l:"Latitude",t:"number",h:"Building coordinate"},{k:"longitude",l:"Longitude",t:"number",h:"Building coordinate"},
       {k:"complete_address",l:"Complete Address",t:"text",h:"Address if available; coordinates are more accurate"},
       {k:"building_name_listing",l:"NRHP Listing Name",t:"text",h:"National Register listing name"},
@@ -451,6 +453,13 @@ const S = {
       {k:"address_suite",l:"Suite",t:"text"},{k:"address_locality",l:"Locality",t:"text"},
       {k:"address_postal_code",l:"Postal Code",t:"text"},{k:"address_country",l:"Country",t:"text"},
       {k:"overall_photos_link",l:"Photos Link",t:"text"},
+    ]},
+    {id:"event",t:"Event Info",d:"Tornado metadata — pre-filled for St. Louis 2024.",f:[
+      {k:"tornado_name",l:"Tornado Name",t:"text"},{k:"tornado_year",l:"Year",t:"number"},
+      {k:"town",l:"Town",t:"text",h:"Town where the building is located"},
+      {k:"tornado_EF",l:"EF Rating",t:"text"},
+      {k:"tornado_start_lat",l:"Start Lat",t:"number"},{k:"tornado_end_lat",l:"End Lat",t:"number"},
+      {k:"tornado_start_long",l:"Start Long",t:"number"},{k:"tornado_end_long",l:"End Long",t:"number"},
     ]},
     {id:"basics",t:"Building Basics",d:"Physical characteristics from visual inspection.",f:[
       {k:"archetype",l:"Archetype (1–15)",t:"select",o:["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"],h:"Nofal archetype: stories, height, construction, roof"},
@@ -742,24 +751,85 @@ function renderTabs() {
   );
 }
 
-// ── Map Panel ───────────────────────────────────────────────────────
-function renderMap() {
+// ── Leaflet Map ─────────────────────────────────────────────────────
+let leafMap = null, leafMarker = null, currentTileLayer = null;
+const STL_CENTER = [38.643, -90.325];
+const TILES = {
+  street: { url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", attr: "&copy; OpenStreetMap" },
+  satellite: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attr: "&copy; Esri" }
+};
+let tileMode = "satellite";
+
+function initMap() {
+  if (leafMap) return;
+  leafMap = L.map("mapframe", { zoomControl: true }).setView(STL_CENTER, 17);
+  currentTileLayer = L.tileLayer(TILES[tileMode].url, {
+    maxZoom: 20, attribution: TILES[tileMode].attr
+  }).addTo(leafMap);
+  leafMap.on("click", function(ev) {
+    const lat = Math.round(ev.latlng.lat * 1e6) / 1e6;
+    const lon = Math.round(ev.latlng.lng * 1e6) / 1e6;
+    placeMarker(lat, lon);
+    setF("latitude", lat);
+    setF("longitude", lon);
+    updateMapUI();
+    renderForm();
+  });
+  updateMapLinks();
+}
+
+function switchTiles() {
+  tileMode = tileMode === "satellite" ? "street" : "satellite";
+  if (currentTileLayer) leafMap.removeLayer(currentTileLayer);
+  currentTileLayer = L.tileLayer(TILES[tileMode].url, {
+    maxZoom: 20, attribution: TILES[tileMode].attr
+  }).addTo(leafMap);
+  updateMapLinks();
+}
+
+function placeMarker(lat, lon) {
+  if (leafMarker) leafMap.removeLayer(leafMarker);
+  leafMarker = L.marker([lat, lon]).addTo(leafMap);
+}
+
+function updateMapLinks() {
   const lat = fd.latitude, lon = fd.longitude;
-  const frame = document.getElementById("mapframe");
   const links = document.getElementById("maplinks");
+  let html = '<button onclick="switchTiles()">' + (tileMode === "satellite" ? "Street Map" : "Satellite") + '</button>';
+  if (lat && lon) {
+    html += '<span class="sep">|</span>';
+    html += '<a href="https://www.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '" target="_blank" rel="noopener">Street View</a>';
+    html += '<a href="https://earth.google.com/web/@' + lat + ',' + lon + ',0a,200d,35y,0h,0t,0r" target="_blank" rel="noopener">Google Earth</a>';
+  }
+  links.innerHTML = html;
+}
+
+function updateMapUI() {
+  const lat = fd.latitude, lon = fd.longitude;
   const coords = document.getElementById("mapcoords");
   if (lat && lon) {
-    frame.innerHTML = `<iframe src="https://maps.google.com/maps?q=${lat},${lon}&z=19&t=k&output=embed" allowfullscreen loading="lazy"></iframe>`;
-    links.hidden = false;
-    links.innerHTML = `<a href="https://www.google.com/maps/@${lat},${lon},19z" target="_blank" rel="noopener">Satellite</a>
-      <a href="https://www.google.com/maps?q=&layer=c&cbll=${lat},${lon}" target="_blank" rel="noopener">Street View</a>
-      <a href="https://earth.google.com/web/@${lat},${lon},0a,200d,35y,0h,0t,0r" target="_blank" rel="noopener">Google Earth</a>`;
     coords.hidden = false;
-    coords.textContent = `${lat}, ${lon}`;
+    coords.innerHTML = '<span class="coord-val">' + lat + ', ' + lon + '</span>';
   } else {
-    frame.innerHTML = "<span>Enter coordinates in Building Location to load map</span>";
-    links.hidden = true; coords.hidden = true;
+    coords.hidden = true;
   }
+  updateMapLinks();
+}
+
+function renderMap() {
+  setTimeout(function() {
+    initMap();
+    var lat = fd.latitude, lon = fd.longitude;
+    if (lat && lon) {
+      leafMap.setView([lat, lon], 19);
+      placeMarker(lat, lon);
+    } else {
+      leafMap.setView(STL_CENTER, 17);
+      if (leafMarker) { leafMap.removeLayer(leafMarker); leafMarker = null; }
+    }
+    leafMap.invalidateSize();
+    updateMapUI();
+  }, 50);
 }
 
 // ── Form Rendering ──────────────────────────────────────────────────
