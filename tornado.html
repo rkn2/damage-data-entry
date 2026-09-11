@@ -101,6 +101,12 @@ button { cursor: pointer; }
 .bld-item .n { font-weight: 600; font-size: 11px; color: var(--accent); min-width: 22px; font-variant-numeric: tabular-nums; }
 .bld-item .a { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bld-item .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.bld-item .del-x {
+  display: none; font-size: 14px; color: var(--text-muted); background: none;
+  border: none; padding: 0 2px; line-height: 1; cursor: pointer; flex-shrink: 0;
+}
+.bld-item:hover .del-x { display: block; }
+.bld-item:hover .dot { display: none; }
 .bld-item .dot.lo { background: var(--border); }
 .bld-item .dot.mid { background: var(--warning); }
 .bld-item .dot.hi { background: var(--success); }
@@ -688,9 +694,14 @@ function renderList() {
     const p = n/totalF;
     const dc = p > .7 ? "hi" : p > .1 ? "mid" : "lo";
     return `<div class="bld-item ${b._id===curId?'active':''}" data-id="${b._id}">
-      <span class="n">${e(b.sno)}</span><span class="a">${e(lbl(b))}</span><span class="dot ${dc}"></span></div>`;
+      <span class="n">${e(b.sno)}</span><span class="a">${e(lbl(b))}</span><span class="dot ${dc}"></span><button class="del-x" data-did="${b._id}" title="Delete">&times;</button></div>`;
   }).join("");
-  el.querySelectorAll(".bld-item").forEach(x => x.onclick = () => selBld(x.dataset.id));
+  el.querySelectorAll(".bld-item").forEach(x => {
+    x.onclick = (ev) => { if (!ev.target.classList.contains("del-x")) selBld(x.dataset.id); };
+  });
+  el.querySelectorAll(".del-x").forEach(x => {
+    x.onclick = (ev) => { ev.stopPropagation(); delBuildingById(x.dataset.did); };
+  });
 }
 
 function selBld(id) {
@@ -711,6 +722,17 @@ function addBuilding() {
   const nm = document.getElementById("uname").value.trim();
   const b = { _id: "b_" + Date.now(), sno, "S.No.": sno, completed_by: nm, ...S.defaults };
   blds.push(b); saveAll(); selBld(b._id);
+}
+
+function delBuildingById(id) {
+  const b = blds.find(x => x._id === id);
+  if (!b || !confirm("Delete " + lbl(b) + "?")) return;
+  blds = blds.filter(x => x._id !== id); saveAll();
+  if (curId === id) { curId = null; fd = {};
+    document.getElementById("empty").hidden = false;
+    document.getElementById("fview").classList.remove("on");
+  }
+  renderList();
 }
 
 function delBuilding() {
