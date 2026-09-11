@@ -271,6 +271,21 @@ select {
   color: var(--text-muted); letter-spacing: .02em;
   text-transform: uppercase;
 }
+.map-search {
+  display: flex; gap: 0; padding: 8px 10px; border-bottom: 1px solid var(--border);
+}
+.map-search input {
+  flex: 1; font: inherit; font-size: 13px; padding: 7px 10px;
+  border: 1px solid var(--input-border); border-radius: var(--radius) 0 0 var(--radius);
+  background: var(--input-bg); color: var(--text); border-right: none;
+}
+.map-search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); z-index: 1; }
+.map-search button {
+  font: inherit; font-size: 12.5px; font-weight: 500; padding: 7px 14px;
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 0 var(--radius) var(--radius) 0; cursor: pointer;
+}
+.map-search button:hover { background: var(--accent-hover); }
 #mapframe {
   flex: 1; min-height: 300px;
   background: var(--surface-alt);
@@ -436,6 +451,10 @@ select {
         <div id="fscroll"></div>
         <div id="mappanel">
           <div class="map-hdr"><span>Click map to select building</span><button onclick="toggleMap()" style="display:none;font:inherit;background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:0" id="map-close">&times;</button></div>
+          <div class="map-search">
+            <input type="text" id="addr-search" placeholder="Search address..." onkeydown="if(event.key==='Enter')searchAddr()">
+            <button onclick="searchAddr()">Go</button>
+          </div>
           <div id="mapframe"></div>
           <div id="maplinks" class="map-links"></div>
           <div id="mapcoords" class="map-coords" hidden></div>
@@ -836,6 +855,37 @@ function updateMapUI() {
     coords.hidden = true;
   }
   updateMapLinks();
+}
+
+function searchAddr() {
+  var q = document.getElementById("addr-search").value.trim();
+  if (!q) return;
+  var btn = document.querySelector(".map-search button");
+  btn.textContent = "...";
+  fetch("https://nominatim.openstreetmap.org/search?q=" + encodeURIComponent(q) + "&format=json&limit=1", {
+    headers: {"Accept": "application/json"}
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.textContent = "Go";
+    if (data && data.length > 0) {
+      var lat = Math.round(parseFloat(data[0].lat) * 1e6) / 1e6;
+      var lon = Math.round(parseFloat(data[0].lon) * 1e6) / 1e6;
+      leafMap.setView([lat, lon], 19);
+      placeMarker(lat, lon);
+      setF("latitude", lat);
+      setF("longitude", lon);
+      updateMapUI();
+      renderForm();
+      if (data[0].display_name) {
+        var shortAddr = data[0].display_name.split(",").slice(0, 3).join(",");
+        setF("complete_address", shortAddr);
+      }
+    } else {
+      alert("Address not found. Try a more specific search.");
+    }
+  })
+  .catch(function() { btn.textContent = "Go"; alert("Search failed. Check your connection."); });
 }
 
 function renderMap() {
